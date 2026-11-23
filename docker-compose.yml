@@ -1,0 +1,51 @@
+services:
+  sample-a:
+    build: .
+    image: rollout-check:latest
+    command: uvicorn app.sample_target:app --host 0.0.0.0 --port 9101
+    environment:
+      INSTANCE_ID: sample-a
+      # Bucket layout A
+      SAMPLE_BUCKETS: "0.05,0.1,0.25,0.5,1,2.5,5"
+    ports:
+      - "9101:9101"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:9101/state')"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  sample-b:
+    build: .
+    image: rollout-check:latest
+    command: uvicorn app.sample_target:app --host 0.0.0.0 --port 9102
+    environment:
+      INSTANCE_ID: sample-b
+      # Different bucket layout B on purpose
+      SAMPLE_BUCKETS: "0.1,0.3,0.7,1.5,3,6"
+    ports:
+      - "9102:9102"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:9102/state')"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  verifier:
+    build: .
+    image: rollout-check:latest
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      SCRAPE_TARGETS: "sample-a=http://sample-a:9101/metrics,sample-b=http://sample-b:9102/metrics"
+    ports:
+      - "8000:8000"
+    depends_on:
+      sample-a:
+        condition: service_healthy
+      sample-b:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
